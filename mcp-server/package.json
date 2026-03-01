@@ -1,0 +1,46 @@
+{
+  "name": "@g-mercuri/copilot-skills-discovery",
+  "version": "1.0.0",
+  "description": "MCP server that auto-discovers GitHub Copilot agents, skills, prompts, instructions, and MCP servers for your project",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "copilot-skills-discovery": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/ tests/"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "eslint": "^10.0.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.56.1",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "github-copilot",
+    "copilot",
+    "agent-discovery",
+    "skills",
+    "prompts",
+    "instructions"
+  ]
+}

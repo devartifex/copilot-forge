@@ -1,0 +1,17 @@
+{
+  "servers": {
+    "awesome-copilot": {
+      "type": "stdio",
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "ghcr.io/microsoft/mcp-dotnet-samples/awesome-copilot:latest"],
+      "description": "Official awesome-copilot MCP server (Microsoft) - searches awesome-copilot catalog"
+    },
+    "copilot-skills-discovery": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/mcp-server/dist/index.js"],
+      "description": "Skills discovery MCP server - MCP registry search, GitHub search, project analysis, security layer"
+    }
+  }
+}
+
