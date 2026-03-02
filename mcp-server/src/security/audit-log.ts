@@ -16,7 +16,7 @@ export interface AuditEntry {
   error?: string;
 }
 
-const AUDIT_DIR = join(homedir(), ".copilot-skills-discovery");
+const AUDIT_DIR = join(homedir(), ".copilot-forge");
 const AUDIT_LOG_PATH = join(AUDIT_DIR, "audit.jsonl");
 
 export function getAuditLogPath(): string {

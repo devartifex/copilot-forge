@@ -1,4 +1,4 @@
-# Copilot Instructions — copilot-skills-discovery
+# Copilot Instructions — copilot-forge
 
 ## Project Overview
 

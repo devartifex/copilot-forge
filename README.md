@@ -353,7 +353,7 @@ When using VS Code with the repo open, prefer `"${workspaceFolder}/mcp-server/di
 | Resource URI | Description |
 |--------------|-------------|
 | `discovery://trust-registry` | Current trust levels for known asset sources |
-| `discovery://audit-log` | Log of all install operations (`~/.copilot-skills-discovery/audit.jsonl`) |
+| `discovery://audit-log` | Log of all install operations (`~/.copilot-forge/audit.jsonl`) |
 | `discovery://cache-status` | Discovery cache metadata |
 
 ---
@@ -368,7 +368,7 @@ Every asset carries a **trust badge** before installation:
 | ⚠️ **Community** | Medium | GitHub repos with reasonable activity |
 | ❌ **Unknown** | Low | Unrecognised or brand-new sources |
 
-**Protection measures:** URL allowlist (GitHub + MCP Registry only), SSRF blocking, preview-by-default installs, content scanning for prompt injection, path traversal prevention, and a full audit log at `~/.copilot-skills-discovery/audit.jsonl`. All MCP tools declare `readOnlyHint`, `destructiveHint`, and `openWorldHint` annotations.
+**Protection measures:** URL allowlist (GitHub + MCP Registry only), SSRF blocking, preview-by-default installs, content scanning for prompt injection, path traversal prevention, and a full audit log at `~/.copilot-forge/audit.jsonl`. All MCP tools declare `readOnlyHint`, `destructiveHint`, and `openWorldHint` annotations.
 
 ---
 

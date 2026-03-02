@@ -16,7 +16,7 @@ import { registerGenerateOrgStandardsTool } from "./tools/generate-org-standards
 import { registerResources } from "./resources.js";
 
 const server = new McpServer({
-  name: "copilot-skills-discovery",
+  name: "copilot-forge",
   version: "1.0.0",
 });
 

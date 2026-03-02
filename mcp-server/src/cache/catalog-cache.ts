@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import type { CatalogEntry, CachedCatalog } from "../types.js";
 
-const CACHE_DIR = join(homedir(), ".copilot-skills-discovery", "cache");
+const CACHE_DIR = join(homedir(), ".copilot-forge", "cache");
 const DEFAULT_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 function ensureCacheDir(): void {

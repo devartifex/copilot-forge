@@ -34,7 +34,7 @@ let server: McpServer;
 let client: Client;
 
 async function setupServer(): Promise<void> {
-  server = new McpServer({ name: 'copilot-skills-discovery', version: '1.0.0' });
+  server = new McpServer({ name: 'copilot-forge', version: '1.0.0' });
 
   registerSearchAwesomeCopilotTool(server);
   registerSearchMcpRegistryTool(server);

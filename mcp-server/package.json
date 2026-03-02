@@ -1,11 +1,11 @@
 {
-  "name": "@g-mercuri/copilot-skills-discovery",
+  "name": "@g-mercuri/copilot-forge",
   "version": "1.0.0",
   "description": "MCP server that auto-discovers GitHub Copilot agents, skills, prompts, instructions, and MCP servers for your project",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "copilot-skills-discovery": "dist/index.js"
+    "copilot-forge": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
