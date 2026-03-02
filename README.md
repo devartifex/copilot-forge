@@ -7,7 +7,7 @@ Auto-discovers, installs, validates, and self-improves GitHub Copilot agents, sk
 [![GitHub Copilot](https://img.shields.io/badge/GitHub%20Copilot-Agent%20Mode-blue?logo=github)](https://docs.github.com/en/copilot)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 ![CI](https://github.com/g-mercuri/copilot-forge/workflows/CI/badge.svg)
-![Tests](https://img.shields.io/badge/tests-137%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-108%20passing-brightgreen)
 
 ---
 
@@ -70,7 +70,7 @@ No more browsing READMEs. No more manual `.github/` setup. No more guessing whic
 |---------|-------------|--------------|
 | 🧬 **`generate_instructions`** | Deep-scans your code for naming conventions, error handling, imports, architecture — generates a project-specific `copilot-instructions.md` in seconds | Every developer |
 | 📊 **`score_setup`** | Rates your Copilot setup 0-10 with letter grade, identifies gaps, suggests fixes | Teams wanting to level up |
-| 🏢 **`generate_org_standards`** | Generates org-wide instruction files (naming policy, security rules, testing standards, commit conventions) from your codebase patterns | GitHub Enterprise teams |
+| 🏢 **`apply_org_standards`** | Applies org-wide standards from an org's `.github` repo (or generates defaults from codebase patterns) | GitHub Enterprise teams |
 
 ---
 
@@ -127,11 +127,18 @@ Returns a letter grade (F → A+), progress bar, and prioritized quick wins.
 
 ---
 
-## 🏢 Enterprise: Org Standards Generator
+## 🏢 Enterprise: Org Standards
 
 For GitHub Enterprise teams that need consistent Copilot behavior across repositories.
 
-### Generated Standards
+### How It Works
+
+`apply_org_standards` can operate in two modes:
+
+1. **Apply from org source** — provide an org's `.github` repo URL or local path, and CopilotForge copies the org's instruction files into your project
+2. **Generate defaults** — if no org source is given, CopilotForge scans your codebase patterns and generates default standards
+
+### Standard Files
 
 | File | Scope | Contents |
 |------|-------|---------|
@@ -144,9 +151,9 @@ For GitHub Enterprise teams that need consistent Copilot behavior across reposit
 
 ### How to Deploy at Org Level
 
-1. Run `generate_org_standards` on a reference project
-2. Copy the generated `.github/instructions/` to your org's `.github` repository
-3. Every repo in the org inherits these standards automatically
+1. Create a `.github` repository in your GitHub org with your standard instruction files
+2. Run `apply_org_standards` on any project repo, pointing at the org `.github` repo
+3. CopilotForge installs the org standards into the project's `.github/instructions/`
 4. Teams can override with repo-level instructions
 
 This replaces manual style guides with **AI-enforced standards** — Copilot follows these rules in every suggestion, every review, every generation.
@@ -169,26 +176,23 @@ Or in Copilot Chat:
 Run the autopilot to improve this project's Copilot setup
 ```
 
-### What it does — the 6-phase loop
+### What it does — the 3-phase loop
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                                                             │
-│   ANALYZE → DISCOVER → INSTALL → VALIDATE → PATCH → REPORT │
-│      ↑                                              │       │
-│      └──────────────── loop ────────────────────────┘       │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────┐
+│                                           │
+│   ANALYZE → IMPROVE → VALIDATE            │
+│      ↑                    │               │
+│      └────── loop ────────┘               │
+│                                           │
+└───────────────────────────────────────────┘
 ```
 
 | Phase | What happens |
 |-------|-------------|
 | **🔬 Analyze** | Deep-scan your project for languages, frameworks, dependencies, CI/CD, cloud providers, and architecture patterns |
-| **🌐 Discover** | Search awesome-copilot, MCP Registry, GitHub topics, and community repos for assets matching your stack |
-| **📦 Install** | Install the top-ranked assets into `.github/` with conflict detection and safety checks |
+| **🔧 Improve** | Generate instructions, apply standards, install assets — using LLM intelligence to decide what's needed |
 | **✅ Validate** | Verify installed assets — check `applyTo` globs, syntax, compatibility, and build integrity |
-| **🔧 Patch** | Auto-fix any issues found during validation (e.g., wrong file globs, missing fields) |
-| **📊 Report** | Summarize what changed, what improved, and what to target next iteration |
 
 ### Safety rules
 
@@ -243,8 +247,6 @@ The validator caught a bug: `nodejs-javascript-vitest.instructions.md` had `appl
 | Command | Use Case |
 |---------|----------|
 | `/forge-init` | ⚡ One-command full setup (recommended) |
-| `/discover-for-new-project` | 🆕 Full setup for new projects |
-| `/discover-for-refactoring` | 🔄 Find gaps in existing setup |
 | `/autopilot-improve` | 🔥 Iterative self-improvement loop |
 
 ### Option A: Forge Init (one command, full setup)
@@ -270,7 +272,7 @@ In Copilot Chat:
 Find the best skills and MCP servers for this project
 ```
 
-Copilot calls `recommend_skills`, which runs `analyze_project`, `search_copilot_assets`, and `search_mcp_servers` in parallel, then deduplicates and ranks the results.
+The LLM uses the discovery skills and `#fetch` to read awesome-copilot catalogs and the MCP Registry directly, then recommends the best matches for your stack.
 
 ---
 
@@ -281,7 +283,7 @@ CopilotForge runs as an MCP server. For the best experience, use it alongside th
 | Server | Source | What It Provides |
 |--------|--------|-----------------|
 | **awesome-copilot** | [Microsoft](https://github.com/microsoft/mcp-dotnet-samples) | Official awesome-copilot catalog search |
-| **copilot-forge** | This project | MCP Registry search, GitHub-wide search, project analysis, autopilot loop, trust layer |
+| **copilot-forge** | This project | Project analysis, instruction generation, setup scoring, org standards, trust layer |
 
 ### VS Code (`.vscode/mcp.json`)
 
@@ -339,14 +341,11 @@ When using VS Code with the repo open, prefer `"${workspaceFolder}/mcp-server/di
 |------|-----|-------------|
 | `generate_instructions` 🧬 | **Write** | Deep-scan codebase → generate project-specific `copilot-instructions.md` |
 | `score_setup` 📊 | Read | Evaluate Copilot setup quality — score, grade, gaps, fix suggestions |
-| `generate_org_standards` 🏢 | **Write** | Generate org-wide instruction files from detected patterns (enterprise) |
-| `recommend_skills` ⭐ | Read | Unified orchestrator — all sources, dedup, context-aware ranking |
-| `autopilot_improve` 🔄 | Read | Run one autopilot iteration — analyze, discover, validate, patch |
-| `search_copilot_assets` | Read | Search awesome-copilot catalog |
-| `search_mcp_servers` | Read | Search MCP Registry |
-| `analyze_project` | Read | Deep project scan |
-| `get_asset_details` | Read | Asset details + trust badge |
-| `install_asset` | **Write** | Preview-by-default install with conflict detection |
+| `analyze_project` | Read | Deep project scan (languages, frameworks, dependencies, existing customizations) |
+| `install_asset` | **Write** | Preview-by-default install with conflict detection and audit |
+| `apply_org_standards` 🏢 | **Write** | Apply org-wide standards from an org's `.github` repo URL or local path, or generate defaults from codebase patterns if no org source given |
+
+> **Why only 5 tools?** The previous 10-tool design included search and recommendation tools (`search_copilot_assets`, `search_mcp_servers`, `recommend_skills`, `get_asset_details`, `autopilot_improve`) that the LLM handles better natively — it can read awesome-copilot catalogs and the MCP Registry directly via `#fetch` and skills.
 
 ### MCP Resources
 
@@ -354,7 +353,6 @@ When using VS Code with the repo open, prefer `"${workspaceFolder}/mcp-server/di
 |--------------|-------------|
 | `discovery://trust-registry` | Current trust levels for known asset sources |
 | `discovery://audit-log` | Log of all install operations (`~/.copilot-forge/audit.jsonl`) |
-| `discovery://cache-status` | Discovery cache metadata |
 
 ---
 
@@ -378,46 +376,39 @@ Every asset carries a **trust badge** before installation:
 
 ```mermaid
 graph TD
-    A[🔬 Analyze Project] --> B[🌐 Discover Assets]
-    B --> C[📦 Install Top 5]
-    C --> D[✅ Validate & Patch]
-    D --> E[📊 Report Changes]
-    E --> F{More improvements?}
-    F -->|Yes| A
-    F -->|No| G[🎉 Done]
+    A[🔬 Analyze Project] --> B[🔧 Improve Setup]
+    B --> C[✅ Validate]
+    C --> D{More improvements?}
+    D -->|Yes| A
+    D -->|No| E[🎉 Done]
 
     style A fill:#e1f5fe,stroke:#0288d1
-    style B fill:#f3e5f5,stroke:#7b1fa2
-    style C fill:#fff3e0,stroke:#f57c00
-    style D fill:#e8f5e9,stroke:#388e3c
-    style E fill:#fff3e0,stroke:#f57c00
-    style G fill:#c8e6c9,stroke:#2e7d32
+    style B fill:#fff3e0,stroke:#f57c00
+    style C fill:#e8f5e9,stroke:#388e3c
+    style E fill:#c8e6c9,stroke:#2e7d32
 ```
 
 ### Discovery Pipeline
 
+Discovery is now handled by the LLM using skills and `#fetch` rather than dedicated MCP search tools:
+
 ```mermaid
 graph TD
     Start([User runs prompt]) --> Analyze[🔬 Analyze Project Context]
-    Analyze --> |Project profile| P1[📚 Awesome Copilot]
-    Analyze --> |Project profile| P2[🔌 MCP Registry]
-    Analyze --> |Project profile| P3[🔎 GitHub Search]
+    Analyze --> |Project profile| LLM[🤖 LLM + Skills]
+    LLM --> |#fetch| P1[📚 Awesome Copilot]
+    LLM --> |#fetch| P2[🔌 MCP Registry]
+    LLM --> |#fetch| P3[🔎 GitHub Search]
 
-    P1 --> Merge[Merge & Deduplicate]
-    P2 --> Merge
-    P3 --> Merge
-
-    Merge --> Rank[📊 Rank by Relevance]
-    Rank --> Present[📋 Present Recommendations]
+    LLM --> Present[📋 Present Recommendations]
     Present --> |User selects| Install[📦 Install with Safety Checks]
     Install --> Done([✅ Project configured])
 
     style Analyze fill:#e1f5fe,stroke:#0288d1
+    style LLM fill:#e8eaf6,stroke:#3f51b5
     style P1 fill:#f3e5f5,stroke:#7b1fa2
     style P2 fill:#f3e5f5,stroke:#7b1fa2
     style P3 fill:#f3e5f5,stroke:#7b1fa2
-    style Merge fill:#fff3e0,stroke:#f57c00
-    style Rank fill:#fff3e0,stroke:#f57c00
     style Present fill:#e8f5e9,stroke:#388e3c
     style Install fill:#fce4ec,stroke:#c62828
 ```
@@ -430,8 +421,6 @@ graph TD
 │   └── copilot-discoverer.agent.md       # 🤖 Orchestrator agent
 ├── prompts/
 │   ├── forge-init.prompt.md              # ⚡ One-command full setup
-│   ├── discover-for-new-project.prompt.md # 🆕 New project workflow
-│   ├── discover-for-refactoring.prompt.md # 🔄 Refactoring workflow
 │   └── autopilot-improve.prompt.md        # 🔥 Self-improvement loop
 └── skills/
     ├── analyze-project-context/           # 🔬 Deep project analysis
@@ -446,12 +435,13 @@ mcp-server/src/
 ├── tools/
 │   ├── generate-instructions.ts          # 🧬 Auto-generate instructions
 │   ├── score-setup.ts                    # 📊 Setup quality scoring
-│   ├── generate-org-standards.ts         # 🏢 Enterprise standards generator
-│   ├── recommend-skills.ts              # ⭐ Unified recommendation
-│   ├── autopilot-improve.ts             # 🔄 Autopilot iteration
-│   ├── install-asset.ts                 # 📦 Safe installer
-│   └── ...
-└── security/                             # 🔒 URL validation, content scanning
+│   ├── apply-org-standards.ts            # 🏢 Apply org standards (or generate defaults)
+│   ├── analyze-project.ts               # 🔬 Deep project scan
+│   └── install-asset.ts                 # 📦 Safe installer
+├── core/
+│   ├── scorer.ts                        # Scoring engine
+│   └── git-ops.ts                       # Git operations
+└── security/                             # 🔒 URL validation, content scanning, path safety, audit
 ```
 
 ---
@@ -462,9 +452,9 @@ mcp-server/src/
 |---------|:---------------:|:--------------------------:|:---------------:|
 | **Auto-generate instructions** | ✅ | ❌ | ❌ |
 | **Setup quality score** | ✅ | ❌ | ❌ |
-| **Org standards generation** | ✅ | ❌ | ❌ |
+| **Org standards (apply/generate)** | ✅ | ❌ | ❌ |
 | Deep project analysis | ✅ | ❌ | ❌ |
-| Multi-source search | ✅ (4+ sources) | ⚠️ (1 source each) | ⚠️ (one at a time) |
+| Multi-source search | ✅ (LLM + skills) | ⚠️ (1 source each) | ⚠️ (one at a time) |
 | Context-aware ranking | ✅ | ⚠️ (basic) | ❌ |
 | Automated installation | ✅ (with safety) | ❌ | ❌ |
 | Conflict detection | ✅ | ❌ | ❌ |
@@ -488,7 +478,7 @@ mcp-server/src/
 
 ## 🧪 CI & Testing
 
-Tested on Node.js 20 and 22 via GitHub Actions — TypeScript compilation, ESLint, 137 unit tests (Vitest), and `npm audit`.
+Tested on Node.js 20 and 22 via GitHub Actions — TypeScript compilation, ESLint, 108 unit tests (Vitest), and `npm audit`.
 
 ---
 

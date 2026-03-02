@@ -1,12 +1,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { existsSync, mkdirSync, writeFileSync, copyFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, copyFileSync, readdirSync, readFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { detectPatterns, type CodePatterns } from "../analyzers/pattern-detector.js";
 import { computeContentHash, logAuditEntry } from "../security/audit-log.js";
+import { validateUrl } from "../security/trusted-sources.js";
 
 // ---------------------------------------------------------------------------
-// Org standard generation — enterprise feature
+// Org standard types
 // ---------------------------------------------------------------------------
 
 export interface OrgStandard {
@@ -440,21 +441,206 @@ export function generateAllOrgStandards(patterns: CodePatterns): OrgStandard[] {
 }
 
 // ---------------------------------------------------------------------------
+// Fetch instruction files from an org .github repo
+// ---------------------------------------------------------------------------
+
+function convertToRawUrl(url: string): string {
+  const blobMatch = url.match(
+    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/,
+  );
+  if (blobMatch) {
+    return `https://raw.githubusercontent.com/${blobMatch[1]}/${blobMatch[2]}/${blobMatch[3]}/${blobMatch[4]}`;
+  }
+  return url;
+}
+
+async function fetchOrgStandards(orgSource: string): Promise<OrgStandard[]> {
+  // Determine the base raw URL for the org's .github repo instructions
+  let baseUrl: string;
+
+  if (orgSource.startsWith("https://github.com/")) {
+    // e.g. https://github.com/my-org/.github
+    const match = orgSource.match(
+      /^https:\/\/github\.com\/([^/]+)\/([^/]+)/,
+    );
+    if (!match) throw new Error(`Cannot parse GitHub URL: ${orgSource}`);
+    const [, owner, repo] = match;
+    baseUrl = `https://api.github.com/repos/${owner}/${repo}/contents/.github/instructions`;
+  } else {
+    throw new Error(
+      "org_source must be a GitHub URL (e.g. https://github.com/my-org/.github)",
+    );
+  }
+
+  // Validate URL
+  const validation = validateUrl(baseUrl);
+  if (!validation.valid) {
+    throw new Error(`URL validation failed: ${validation.reason}`);
+  }
+
+  // Fetch directory listing from GitHub API
+  const dirResponse = await fetch(baseUrl, {
+    headers: { Accept: "application/vnd.github.v3+json" },
+  });
+
+  if (!dirResponse.ok) {
+    throw new Error(
+      `Failed to list org instructions at ${baseUrl}: ${dirResponse.status} ${dirResponse.statusText}`,
+    );
+  }
+
+  const entries = (await dirResponse.json()) as Array<{
+    name: string;
+    download_url: string | null;
+    type: string;
+  }>;
+
+  if (!Array.isArray(entries)) {
+    throw new Error("Expected directory listing from GitHub API");
+  }
+
+  const standards: OrgStandard[] = [];
+
+  for (const entry of entries) {
+    if (entry.type !== "file" || !entry.name.endsWith(".md")) continue;
+    if (!entry.download_url) continue;
+
+    const downloadUrl = convertToRawUrl(entry.download_url);
+    const urlCheck = validateUrl(downloadUrl);
+    if (!urlCheck.valid) continue;
+
+    const contentResponse = await fetch(downloadUrl);
+    if (!contentResponse.ok) continue;
+
+    const content = await contentResponse.text();
+
+    // Extract applyTo from frontmatter if present
+    let applyTo = "**";
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (fmMatch) {
+      const applyToMatch = fmMatch[1].match(/applyTo:\s*['"]?(.*?)['"]?\s*$/m);
+      if (applyToMatch) applyTo = applyToMatch[1];
+    }
+
+    // Extract description from frontmatter
+    let description = `Org standard: ${entry.name}`;
+    if (fmMatch) {
+      const descMatch = fmMatch[1].match(/description:\s*['"]?(.*?)['"]?\s*$/m);
+      if (descMatch) description = descMatch[1];
+    }
+
+    standards.push({
+      filename: entry.name,
+      applyTo,
+      description,
+      content,
+    });
+  }
+
+  return standards;
+}
+
+// ---------------------------------------------------------------------------
+// Apply standards from a local org .github directory
+// ---------------------------------------------------------------------------
+
+function loadLocalOrgStandards(orgPath: string): OrgStandard[] {
+  const instructionsDir = join(orgPath, ".github", "instructions");
+  if (!existsSync(instructionsDir)) {
+    throw new Error(
+      `No .github/instructions/ directory found at: ${orgPath}`,
+    );
+  }
+
+  const files = readdirSync(instructionsDir).filter((f) => f.endsWith(".md"));
+  const standards: OrgStandard[] = [];
+
+  for (const file of files) {
+    const content = readFileSync(join(instructionsDir, file), "utf-8");
+
+    let applyTo = "**";
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (fmMatch) {
+      const applyToMatch = fmMatch[1].match(/applyTo:\s*['"]?(.*?)['"]?\s*$/m);
+      if (applyToMatch) applyTo = applyToMatch[1];
+    }
+
+    let description = `Org standard: ${file}`;
+    if (fmMatch) {
+      const descMatch = fmMatch[1].match(/description:\s*['"]?(.*?)['"]?\s*$/m);
+      if (descMatch) description = descMatch[1];
+    }
+
+    standards.push({ filename: file, applyTo, description, content });
+  }
+
+  return standards;
+}
+
+// ---------------------------------------------------------------------------
+// Shared write logic
+// ---------------------------------------------------------------------------
+
+function writeStandards(
+  standards: OrgStandard[],
+  projectPath: string,
+  source: string,
+): { written: string[]; conflicts: string[] } {
+  const ghDir = join(projectPath, ".github", "instructions");
+  mkdirSync(ghDir, { recursive: true });
+
+  const written: string[] = [];
+  const conflicts: string[] = [];
+
+  for (const std of standards) {
+    const targetPath = join(ghDir, std.filename);
+
+    if (existsSync(targetPath)) {
+      conflicts.push(std.filename);
+      copyFileSync(targetPath, `${targetPath}.backup`);
+    }
+
+    writeFileSync(targetPath, std.content, "utf-8");
+    written.push(std.filename);
+
+    logAuditEntry({
+      timestamp: new Date().toISOString(),
+      action: "install",
+      sourceUrl: source,
+      targetPath,
+      trustLevel: "self-generated",
+      contentHash: computeContentHash(std.content),
+      contentSize: std.content.length,
+      assetType: "instruction",
+      success: true,
+    });
+  }
+
+  return { written, conflicts };
+}
+
+// ---------------------------------------------------------------------------
 // MCP tool registration
 // ---------------------------------------------------------------------------
 
-export function registerGenerateOrgStandardsTool(server: McpServer): void {
+export function registerApplyOrgStandardsTool(server: McpServer): void {
   server.tool(
-    "generate_org_standards",
-    "Generate organization-wide Copilot instruction files from your codebase patterns — naming policies, error handling, testing standards, security rules, commit conventions, and code review guidelines. Enterprise-ready.",
+    "apply_org_standards",
+    "Apply organization-wide Copilot instruction files to a project. Fetches standards from an org's .github repo (URL or local path), or generates defaults from codebase patterns if no org source is provided.",
     {
       project_path: z
         .string()
-        .describe("Absolute path to the project root (used as the reference codebase for pattern detection)"),
+        .describe("Absolute path to the target project root"),
+      org_source: z
+        .string()
+        .optional()
+        .describe(
+          "GitHub URL to the org's .github repo (e.g. https://github.com/my-org/.github) or absolute local path to a directory containing .github/instructions/. If omitted, generates default standards from codebase patterns.",
+        ),
       standards: z
         .array(z.enum(["naming", "error-handling", "testing", "security", "commits", "code-review", "all"]))
         .default(["all"])
-        .describe("Which standards to generate (default: all)"),
+        .describe("Which standards to apply when generating from patterns (ignored when org_source is provided)"),
       confirm: z
         .boolean()
         .default(false)
@@ -463,10 +649,10 @@ export function registerGenerateOrgStandardsTool(server: McpServer): void {
     {
       readOnlyHint: false,
       destructiveHint: false,
-      openWorldHint: false,
+      openWorldHint: true,
       idempotentHint: true,
     },
-    async ({ project_path, standards, confirm }) => {
+    async ({ project_path, org_source, standards, confirm }) => {
       try {
         if (!existsSync(project_path)) {
           return {
@@ -478,43 +664,77 @@ export function registerGenerateOrgStandardsTool(server: McpServer): void {
           };
         }
 
-        const wantAll = standards.includes("all");
-        const patterns = detectPatterns(project_path);
+        let orgStandards: OrgStandard[];
+        let source: string;
 
-        // Generate requested standards
-        const generated: OrgStandard[] = [];
-        if (wantAll || standards.includes("naming")) generated.push(generateNamingPolicy(patterns));
-        if (wantAll || standards.includes("error-handling")) generated.push(generateErrorHandlingPolicy(patterns));
-        if (wantAll || standards.includes("testing")) generated.push(generateTestingPolicy(patterns));
-        if (wantAll || standards.includes("security")) generated.push(generateSecurityPolicy());
-        if (wantAll || standards.includes("commits")) generated.push(generateCommitPolicy());
-        if (wantAll || standards.includes("code-review")) generated.push(generateCodeReviewPolicy());
+        if (org_source) {
+          // Apply from org source
+          if (org_source.startsWith("https://")) {
+            orgStandards = await fetchOrgStandards(org_source);
+            source = org_source;
+          } else if (existsSync(org_source)) {
+            orgStandards = loadLocalOrgStandards(org_source);
+            source = `local://${org_source}`;
+          } else {
+            return {
+              content: [{
+                type: "text" as const,
+                text: `Error: org_source not found: ${org_source}`,
+              }],
+              isError: true,
+            };
+          }
+
+          if (orgStandards.length === 0) {
+            return {
+              content: [{
+                type: "text" as const,
+                text: `No instruction files found at org source: ${org_source}`,
+              }],
+            };
+          }
+        } else {
+          // Fall back to generating from patterns
+          const wantAll = standards.includes("all");
+          const patterns = detectPatterns(project_path);
+
+          orgStandards = [];
+          if (wantAll || standards.includes("naming")) orgStandards.push(generateNamingPolicy(patterns));
+          if (wantAll || standards.includes("error-handling")) orgStandards.push(generateErrorHandlingPolicy(patterns));
+          if (wantAll || standards.includes("testing")) orgStandards.push(generateTestingPolicy(patterns));
+          if (wantAll || standards.includes("security")) orgStandards.push(generateSecurityPolicy());
+          if (wantAll || standards.includes("commits")) orgStandards.push(generateCommitPolicy());
+          if (wantAll || standards.includes("code-review")) orgStandards.push(generateCodeReviewPolicy());
+          source = "generated://org-standards";
+        }
 
         // Check for conflicts
         const ghDir = join(project_path, ".github", "instructions");
         const conflicts: string[] = [];
-        for (const std of generated) {
+        for (const std of orgStandards) {
           if (existsSync(join(ghDir, std.filename))) {
             conflicts.push(std.filename);
           }
         }
 
         // Build report
+        const mode = org_source ? "Applying from org source" : "Generating from codebase patterns";
         const lines: string[] = [
-          "# 🏢 Organization Standards Generator",
+          "# 🏢 Apply Organization Standards",
           "",
-          `**Source project:** ${basename(project_path)}`,
-          `**Standards generated:** ${generated.length}`,
+          `**Mode:** ${mode}`,
+          org_source ? `**Source:** ${org_source}` : `**Source project:** ${basename(project_path)}`,
+          `**Standards found:** ${orgStandards.length}`,
           conflicts.length > 0 ? `**⚠️ Conflicts:** ${conflicts.join(", ")} (will be backed up)` : "",
           "",
-          "## Generated Files",
+          "## Files",
           "",
           "| # | File | Scope | Description |",
           "|---|------|-------|-------------|",
         ];
 
-        for (let i = 0; i < generated.length; i++) {
-          const g = generated[i];
+        for (let i = 0; i < orgStandards.length; i++) {
+          const g = orgStandards[i];
           lines.push(`| ${i + 1} | \`${g.filename}\` | \`${g.applyTo}\` | ${g.description} |`);
         }
 
@@ -522,7 +742,7 @@ export function registerGenerateOrgStandardsTool(server: McpServer): void {
           lines.push("");
           lines.push("## Preview");
           lines.push("");
-          for (const g of generated) {
+          for (const g of orgStandards) {
             lines.push(`### ${g.filename}`);
             lines.push("");
             const preview = g.content.slice(0, 500);
@@ -539,41 +759,20 @@ export function registerGenerateOrgStandardsTool(server: McpServer): void {
         }
 
         // Write files
-        mkdirSync(ghDir, { recursive: true });
-
-        const written: string[] = [];
-        for (const g of generated) {
-          const targetPath = join(ghDir, g.filename);
-
-          if (existsSync(targetPath)) {
-            copyFileSync(targetPath, `${targetPath}.backup`);
-          }
-
-          writeFileSync(targetPath, g.content, "utf-8");
-          written.push(g.filename);
-
-          logAuditEntry({
-            timestamp: new Date().toISOString(),
-            action: "install",
-            sourceUrl: "generated://org-standards",
-            targetPath,
-            trustLevel: "self-generated",
-            contentHash: computeContentHash(g.content),
-            contentSize: g.content.length,
-            assetType: "instruction",
-            success: true,
-          });
-        }
+        const result = writeStandards(orgStandards, project_path, source);
 
         lines.push("");
         lines.push("## ✅ Files Written");
         lines.push("");
-        for (const f of written) {
+        for (const f of result.written) {
           lines.push(`- \`.github/instructions/${f}\``);
+        }
+        if (result.conflicts.length > 0) {
+          lines.push("");
+          lines.push(`**Backed up ${result.conflicts.length} existing file(s)** before overwriting.`);
         }
         lines.push("");
         lines.push("These standards are now active for all Copilot interactions in this project.");
-        lines.push("To use at org level, copy `.github/instructions/` to your organization's `.github` repository.");
 
         return {
           content: [{ type: "text" as const, text: lines.filter(Boolean).join("\n") }],

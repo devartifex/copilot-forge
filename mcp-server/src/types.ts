@@ -20,36 +20,3 @@ export interface ExistingCustomizations {
   agents: string[];
   mcpServers: string[];
 }
-
-export interface DiscoveryResult {
-  name: string;
-  type: "instruction" | "prompt" | "skill" | "agent" | "mcp-server" | "collection";
-  description: string;
-  source: string;
-  sourceUrl: string;
-  relevanceScore: number;
-  status: "not-installed" | "installed" | "outdated";
-}
-
-export interface McpServerResult {
-  name: string;
-  description: string;
-  transport: string;
-  sourceUrl: string;
-  relevanceScore: number;
-  installCommand: string;
-  configSnippet: Record<string, unknown>;
-}
-
-export interface CatalogEntry {
-  name: string;
-  description: string;
-  path: string;
-  type: string;
-}
-
-export interface CachedCatalog {
-  entries: CatalogEntry[];
-  fetchedAt: number;
-  ttlMs: number;
-}

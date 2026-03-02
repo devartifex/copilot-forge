@@ -24,12 +24,17 @@ Set up a world-class Copilot configuration for this project in one shot.
 2. Show the user what was detected (naming conventions, error handling, import style, etc.)
 3. Ask if they want to proceed — if yes, call again with `confirm: true`
 
-### Phase 2: Generate Org Standards
+### Phase 2: Apply Org Standards (Optional)
 
-1. Use the `generate_org_standards` MCP tool with `standards: ["all"]` and `confirm: false`
-2. Show the preview of org-level instruction files that would be created
-3. Ask the user which standards they want — they might not want all of them
-4. Install the selected ones with `confirm: true`
+If the user has an organization `.github` repo with standards:
+1. Use `apply_org_standards` with `org_source` set to their org repo URL and `confirm: false`
+2. Show the preview, ask which standards they want
+3. Install selected ones with `confirm: true`
+
+If no org source, optionally generate defaults:
+1. Use `apply_org_standards` without `org_source` and `confirm: false`
+2. Show the preview, ask which standards they want
+3. Install selected ones with `confirm: true`
 
 ### Phase 3: Score
 
@@ -39,9 +44,14 @@ Set up a world-class Copilot configuration for this project in one shot.
 
 ### Phase 4: Discover & Recommend
 
-1. Use the `recommend_skills` MCP tool to find relevant assets from the ecosystem
-2. Show the top 5 recommendations
-3. Ask if they want to install any
+1. Use `#fetch` to read the awesome-copilot catalogs directly:
+   - `https://raw.githubusercontent.com/github/awesome-copilot/main/docs/README.instructions.md`
+   - `https://raw.githubusercontent.com/github/awesome-copilot/main/docs/README.skills.md`
+   - `https://raw.githubusercontent.com/github/awesome-copilot/main/docs/README.prompts.md`
+   - `https://raw.githubusercontent.com/github/awesome-copilot/main/docs/README.agents.md`
+2. Match catalog entries against the project's tech stack
+3. Show the top 5 recommendations
+4. Ask if they want to install any — use `install_asset` for each
 
 ### Phase 5: Commit
 

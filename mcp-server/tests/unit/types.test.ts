@@ -1,17 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import type { DiscoveryResult } from '../../src/types.js';
+import type { ProjectProfile } from '../../src/types.js';
 
 describe('types', () => {
-  it('should define DiscoveryResult type correctly', () => {
-    const result: DiscoveryResult = {
-      name: 'test',
-      type: 'skill',
-      description: 'test desc',
-      source: 'awesome-copilot',
-      sourceUrl: 'https://github.com/test',
-      relevanceScore: 0.8,
-      status: 'not-installed',
+  it('should define ProjectProfile type correctly', () => {
+    const profile: ProjectProfile = {
+      languages: [{ name: 'TypeScript', fileCount: 10, primary: true }],
+      frameworks: ['Express'],
+      packageManagers: ['npm'],
+      cicd: ['github-actions'],
+      cloudProviders: [],
+      existingCustomizations: {
+        instructions: [],
+        prompts: [],
+        skills: [],
+        agents: [],
+        mcpServers: [],
+      },
     };
-    expect(result.name).toBe('test');
+    expect(profile.languages[0].name).toBe('TypeScript');
   });
 });

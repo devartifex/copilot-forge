@@ -1,6 +1,6 @@
 ---
 mode: agent
-description: "Run the autopilot improvement loop — iteratively discover, install, validate and patch Copilot customizations for this project"
+description: "Run the autopilot improvement loop — iteratively analyze, improve, and validate Copilot customizations for this project"
 tools: ["search/codebase", "web/fetch", "web/githubRepo", "execute/getTerminalOutput", "execute/runInTerminal", "read/terminalLastCommand", "edit/editFiles"]
 ---
 
@@ -10,33 +10,23 @@ Run the `autopilot-improve` skill to start the iterative self-improvement loop.
 
 ## Context
 
-- This project already has Copilot customizations in `.github/`
-- The autopilot will discover new assets, install the best ones, validate them, and patch any issues
-- Each iteration adds up to 5 new assets and validates the project still builds and tests pass
-- The loop stops when there are no more high-value assets to install, or after 5 iterations
+- This project may or may not already have Copilot customizations in `.github/`
+- The autopilot will analyze the project, generate/install missing assets, and validate them
+- Each iteration improves the Copilot setup score
+- The loop stops when the score is high or no more improvements can be made
 
 ## Instructions
 
-1. First, take inventory of what's already installed in `.github/` (agents, skills, prompts, instructions)
-2. Analyze the project's tech stack (languages, frameworks, tools)
-3. Search awesome-copilot for the latest assets matching this stack
-4. Filter out already-installed assets
-5. Select the top 3-5 highest-value uninstalled assets
-6. Install them into the correct `.github/` subdirectories
-7. Validate each installed asset:
-   - Check YAML frontmatter is valid
-   - Check `applyTo` patterns match actual project files (e.g., don't install JS-only instructions for a TS project)
-   - Verify build still passes (`npx tsc --noEmit` if TypeScript)
-   - Verify tests still pass (`npm test` if configured)
-8. Patch any issues found (fix applyTo, add missing frontmatter)
-9. Generate an iteration report showing what changed
-10. Ask if the user wants to continue with another iteration
-11. Git commit after each successful iteration
+1. Run `analyze_project` and `score_setup` to understand the current state
+2. Based on score gaps, use `generate_instructions`, `apply_org_standards`, and discovery via `#fetch`
+3. After changes, re-score and show the improvement
+4. Ask if the user wants to continue with another iteration
+5. Git commit after each successful iteration
 
 ## Safety
 
-- Only install from verified sources (github/awesome-copilot, anthropics/skills)
+- Only install from verified sources (github/awesome-copilot, official repos)
 - Never overwrite existing files
 - Max 5 new assets per iteration
-- If build breaks, revert the changes immediately
-- Always show what was installed before committing
+- If build breaks, revert immediately
+- Always show what was changed before committing

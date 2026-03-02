@@ -3,16 +3,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
-import { registerSearchAwesomeCopilotTool } from "./tools/search-awesome-copilot.js";
-import { registerSearchMcpRegistryTool } from "./tools/search-mcp-registry.js";
 import { registerAnalyzeProjectTool } from "./tools/analyze-project.js";
-import { registerGetDetailsTool } from "./tools/get-details.js";
 import { registerInstallAssetTool } from "./tools/install-asset.js";
-import { registerRecommendSkillsTool } from "./tools/recommend-skills.js";
-import { registerAutopilotImproveTool } from "./tools/autopilot-improve.js";
 import { registerGenerateInstructionsTool } from "./tools/generate-instructions.js";
 import { registerScoreSetupTool } from "./tools/score-setup.js";
-import { registerGenerateOrgStandardsTool } from "./tools/generate-org-standards.js";
+import { registerApplyOrgStandardsTool } from "./tools/apply-org-standards.js";
 import { registerResources } from "./resources.js";
 
 const server = new McpServer({
@@ -20,16 +15,11 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
-registerSearchAwesomeCopilotTool(server);
-registerSearchMcpRegistryTool(server);
 registerAnalyzeProjectTool(server);
-registerGetDetailsTool(server);
 registerInstallAssetTool(server);
-registerRecommendSkillsTool(server);
-registerAutopilotImproveTool(server);
 registerGenerateInstructionsTool(server);
 registerScoreSetupTool(server);
-registerGenerateOrgStandardsTool(server);
+registerApplyOrgStandardsTool(server);
 registerResources(server);
 
 const transport= new StdioServerTransport();

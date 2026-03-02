@@ -7,7 +7,6 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { registerInstallAssetTool } from '../../src/tools/install-asset.js';
-import { registerGetDetailsTool } from '../../src/tools/get-details.js';
 import { validateContent, MAX_CONTENT_SIZE } from '../../src/security/content-validator.js';
 import { validateUrl } from '../../src/security/trusted-sources.js';
 import { validateTargetPath, sanitizeFilename } from '../../src/security/path-safety.js';
@@ -22,7 +21,6 @@ vi.mock('../../src/security/audit-log.js', () => ({
 async function createInstallClient(): Promise<{ client: Client; cleanup: () => Promise<void> }> {
   const server = new McpServer({ name: 'security-test', version: '0.0.1' });
   registerInstallAssetTool(server);
-  registerGetDetailsTool(server);
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'security-test-client', version: '0.0.1' });
@@ -286,20 +284,6 @@ describe('Security Scenarios', () => {
         const text = (result.content as { type: string; text: string }[])[0].text;
         // Should show preview, not block
         expect(text).toContain('preview');
-      } finally {
-        await cleanup();
-      }
-    });
-
-    it('get_asset_details rejects disallowed URLs', async () => {
-      const { client, cleanup } = await createInstallClient();
-      try {
-        const result = await client.callTool({
-          name: 'get_asset_details',
-          arguments: { url: 'http://localhost:8080/evil' },
-        });
-        const text = (result.content as { type: string; text: string }[])[0].text;
-        expect(text).toContain('rejected');
       } finally {
         await cleanup();
       }
