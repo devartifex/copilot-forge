@@ -39,15 +39,27 @@ function getTargetPath(
 export function registerInstallAssetTool(server: McpServer): void {
   server.tool(
     "install_asset",
-    "Download a Copilot asset from GitHub and install it into your project's .github/ folder",
+    "Download Copilot asset(s) from GitHub and install into the project's .github/ folder. Supports single or batch install.",
     {
-      url: z.string().describe("GitHub URL to the asset file"),
+      url: z.string().optional().describe("GitHub URL to a single asset file (use this OR assets, not both)"),
+      assets: z
+        .array(
+          z.object({
+            url: z.string().describe("GitHub URL to the asset file"),
+            asset_type: z
+              .enum(["instruction", "prompt", "skill", "agent"])
+              .describe("Type of asset"),
+          }),
+        )
+        .optional()
+        .describe("Array of assets for batch install (use this OR url, not both)"),
       target_project: z
         .string()
         .describe("Absolute path to the target project root"),
       asset_type: z
         .enum(["instruction", "prompt", "skill", "agent"])
-        .describe("Type of asset to install"),
+        .optional()
+        .describe("Type of asset (required when using single url)"),
       confirm: z
         .boolean()
         .default(false)
@@ -69,179 +81,180 @@ export function registerInstallAssetTool(server: McpServer): void {
     },
     async (params) => {
       try {
-        // 1. Validate URL
-        const urlCheck = validateUrl(params.url);
-        if (!urlCheck.valid) {
+        // Normalize to array of items
+        const items: Array<{ url: string; asset_type: string }> = [];
+
+        if (params.assets && params.assets.length > 0) {
+          items.push(...params.assets);
+        } else if (params.url && params.asset_type) {
+          items.push({ url: params.url, asset_type: params.asset_type });
+        } else {
           return {
             content: [
               {
                 type: "text" as const,
-                text: `❌ Invalid URL: ${urlCheck.reason}`,
+                text: "Error: Provide either 'url' + 'asset_type' for single install, or 'assets' array for batch install.",
               },
             ],
           };
         }
 
-        // 2. Check trust level
-        const trust = getTrustLevel(params.url);
-        if (trust.level === "unknown" && !params.force) {
+        // Phase 1: Pre-validate all items synchronously
+        type ValidatedItem = {
+          item: { url: string; asset_type: string };
+          trust: ReturnType<typeof getTrustLevel>;
+          resolvedPath: string;
+          rawUrl: string;
+        };
+
+        const validated: ValidatedItem[] = [];
+        const results: string[] = [];
+
+        for (const item of items) {
+          const urlCheck = validateUrl(item.url);
+          if (!urlCheck.valid) {
+            results.push(`❌ ${item.url}: Invalid URL — ${urlCheck.reason}`);
+            continue;
+          }
+
+          const trust = getTrustLevel(item.url);
+          if (trust.level === "unknown" && !params.force) {
+            results.push(`❌ ${item.url}: Blocked — ${trust.reason} (use force: true to override)`);
+            continue;
+          }
+
+          const rawFilename = basename(item.url.split("?")[0]);
+          const safeFilename = sanitizeFilename(rawFilename);
+          const targetPath = getTargetPath(
+            params.target_project,
+            item.asset_type,
+            item.url.replace(rawFilename, safeFilename)
+          );
+
+          const pathCheck = validateTargetPath(params.target_project, targetPath);
+          if (!pathCheck.valid) {
+            results.push(`❌ ${item.url}: Path rejected — ${pathCheck.error}`);
+            continue;
+          }
+
+          if (params.dry_run) {
+            results.push(
+              [
+                `🔍 ${item.asset_type}/${basename(item.url)}:`,
+                `  Source: ${item.url}`,
+                `  Target: ${pathCheck.resolvedPath}`,
+                `  Trust:  ${trust.badge} ${trust.level}`,
+              ].join("\n"),
+            );
+            continue;
+          }
+
+          const rawUrl = item.url.includes("raw.githubusercontent.com")
+            ? item.url
+            : toRawUrl(item.url);
+
+          validated.push({ item, trust, resolvedPath: pathCheck.resolvedPath, rawUrl });
+        }
+
+        if (params.dry_run || validated.length === 0) {
           return {
-            content: [
-              {
-                type: "text" as const,
-                text: `❌ Blocked: ${trust.reason}\nSource trust level: ${trust.badge} ${trust.level}\nUse force: true to override.`,
-              },
-            ],
+            content: [{ type: "text" as const, text: results.join("\n\n") || "No assets to process." }],
           };
         }
 
-        // 3. Compute and validate target path
-        const rawFilename = basename(params.url.split("?")[0]);
-        const safeFilename = sanitizeFilename(rawFilename);
-        const targetPath = getTargetPath(
-          params.target_project,
-          params.asset_type,
-          params.url.replace(rawFilename, safeFilename)
+        // Phase 2: Fetch all content in parallel
+        const fetchResults = await Promise.allSettled(
+          validated.map(async (v) => {
+            const res = await fetch(v.rawUrl);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return { ...v, content: await res.text() };
+          }),
         );
 
-        const pathCheck = validateTargetPath(params.target_project, targetPath);
-        if (!pathCheck.valid) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `❌ Path rejected: ${pathCheck.error}`,
-              },
-            ],
-          };
-        }
+        // Phase 3: Process results (validate, preview/write)
+        for (let i = 0; i < fetchResults.length; i++) {
+          const result = fetchResults[i];
+          const v = validated[i];
+          const name = `${v.item.asset_type}/${basename(v.item.url)}`;
 
-        // 4. Dry run — return preview without fetching
-        if (params.dry_run) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: [
-                  "🔍 Dry run preview:",
-                  `  Source: ${params.url}`,
-                  `  Target: ${pathCheck.resolvedPath}`,
-                  `  Trust:  ${trust.badge} ${trust.level} — ${trust.reason}`,
-                  `  Asset type: ${params.asset_type}`,
-                  "",
-                  "No files were fetched or written.",
-                ].join("\n"),
-              },
-            ],
-          };
-        }
-
-        // 5. Fetch content
-        const rawUrl = params.url.includes("raw.githubusercontent.com")
-          ? params.url
-          : toRawUrl(params.url);
-
-        const res = await fetch(rawUrl);
-        if (!res.ok) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Failed to fetch asset: HTTP ${res.status} ${res.statusText}\nURL: ${rawUrl}`,
-              },
-            ],
-          };
-        }
-
-        const content = await res.text();
-
-        // 6. Validate content
-        const validation = validateContent(content, params.asset_type);
-
-        // 7. Compute content hash
-        const contentHash = computeContentHash(content);
-
-        // 8. Preview mode (confirm is false)
-        if (!params.confirm) {
-          const preview = content.slice(0, 500);
-          const lines = [
-            "📋 Install preview (call again with confirm: true to install):",
-            "",
-            `  Trust:  ${trust.badge} ${trust.level}`,
-            `  Target: ${pathCheck.resolvedPath}`,
-            `  Hash:   sha256:${contentHash}`,
-            `  Size:   ${content.length} bytes`,
-          ];
-
-          if (validation.errors.length > 0) {
-            lines.push("", "❌ Validation errors:");
-            for (const e of validation.errors) lines.push(`  • ${e}`);
-          }
-          if (validation.warnings.length > 0) {
-            lines.push("", "⚠️ Warnings:");
-            for (const w of validation.warnings) lines.push(`  • ${w}`);
+          if (result.status === "rejected") {
+            results.push(`❌ ${name}: Fetch failed — ${result.reason}`);
+            continue;
           }
 
-          lines.push("", "--- Content preview ---", preview);
-          if (content.length > 500) lines.push("... (truncated)");
+          const { content } = result.value;
+          const validation = validateContent(content, v.item.asset_type);
+          const contentHash = computeContentHash(content);
+
+          if (!params.confirm) {
+            const lines = [
+              `📋 ${name}:`,
+              `  Trust:  ${v.trust.badge} ${v.trust.level}`,
+              `  Target: ${v.resolvedPath}`,
+              `  Hash:   sha256:${contentHash}`,
+              `  Size:   ${content.length} bytes`,
+            ];
+            if (validation.errors.length > 0) {
+              lines.push("  ❌ Errors: " + validation.errors.join(", "));
+            }
+            if (validation.warnings.length > 0) {
+              lines.push("  ⚠️ Warnings: " + validation.warnings.join(", "));
+            }
+            lines.push("  Preview: " + content.split("\n")[0] + "...");
+
+            logAuditEntry({
+              timestamp: new Date().toISOString(),
+              action: "preview",
+              sourceUrl: v.item.url,
+              targetPath: v.resolvedPath,
+              trustLevel: v.trust.level,
+              contentHash,
+              contentSize: content.length,
+              assetType: v.item.asset_type,
+              success: true,
+            });
+
+            results.push(lines.join("\n"));
+            continue;
+          }
+
+          // Write file
+          mkdirSync(dirname(v.resolvedPath), { recursive: true });
+
+          let backedUp = false;
+          if (existsSync(v.resolvedPath)) {
+            copyFileSync(v.resolvedPath, `${v.resolvedPath}.backup`);
+            backedUp = true;
+          }
+
+          writeFileSync(v.resolvedPath, content, "utf-8");
 
           logAuditEntry({
             timestamp: new Date().toISOString(),
-            action: "preview",
-            sourceUrl: params.url,
-            targetPath: pathCheck.resolvedPath,
-            trustLevel: trust.level,
+            action: "install",
+            sourceUrl: v.item.url,
+            targetPath: v.resolvedPath,
+            trustLevel: v.trust.level,
             contentHash,
             contentSize: content.length,
-            assetType: params.asset_type,
+            assetType: v.item.asset_type,
             success: true,
           });
 
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: lines.join("\n"),
-              },
-            ],
-          };
+          results.push(
+            backedUp
+              ? `✅ ${name} → ${v.resolvedPath} (backup created)`
+              : `✅ ${name} → ${v.resolvedPath}`,
+          );
         }
 
-        // 9. Confirmed install — write file
-        mkdirSync(dirname(pathCheck.resolvedPath), { recursive: true });
-
-        let backedUp = false;
-        if (existsSync(pathCheck.resolvedPath)) {
-          const backupPath = `${pathCheck.resolvedPath}.backup`;
-          copyFileSync(pathCheck.resolvedPath, backupPath);
-          backedUp = true;
-        }
-
-        writeFileSync(pathCheck.resolvedPath, content, "utf-8");
-
-        logAuditEntry({
-          timestamp: new Date().toISOString(),
-          action: "install",
-          sourceUrl: params.url,
-          targetPath: pathCheck.resolvedPath,
-          trustLevel: trust.level,
-          contentHash,
-          contentSize: content.length,
-          assetType: params.asset_type,
-          success: true,
-        });
-
-        const message = backedUp
-          ? `✅ Asset installed successfully!\nPath: ${pathCheck.resolvedPath}\nHash: sha256:${contentHash}\nNote: Existing file was backed up to ${pathCheck.resolvedPath}.backup`
-          : `✅ Asset installed successfully!\nPath: ${pathCheck.resolvedPath}\nHash: sha256:${contentHash}`;
+        const summary =
+          items.length > 1
+            ? `# Batch Install Results (${items.length} assets)\n\n${results.join("\n\n")}`
+            : results[0];
 
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: message,
-            },
-          ],
+          content: [{ type: "text" as const, text: summary }],
         };
       } catch (error) {
         const message =

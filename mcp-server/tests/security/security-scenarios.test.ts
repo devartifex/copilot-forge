@@ -283,7 +283,7 @@ describe('Security Scenarios', () => {
         });
         const text = (result.content as { type: string; text: string }[])[0].text;
         // Should show preview, not block
-        expect(text).toContain('preview');
+        expect(text).toContain('📋');
       } finally {
         await cleanup();
       }

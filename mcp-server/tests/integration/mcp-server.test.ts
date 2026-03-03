@@ -11,6 +11,7 @@ import { registerInstallAssetTool } from '../../src/tools/install-asset.js';
 import { registerGenerateInstructionsTool } from '../../src/tools/generate-instructions.js';
 import { registerScoreSetupTool } from '../../src/tools/score-setup.js';
 import { registerApplyOrgStandardsTool } from '../../src/tools/apply-org-standards.js';
+import { registerDiscoverAssetsTool } from '../../src/tools/discover-assets.js';
 import { registerResources } from '../../src/resources.js';
 
 // Mock audit log to avoid filesystem side effects
@@ -31,6 +32,7 @@ async function setupServer(): Promise<void> {
   registerGenerateInstructionsTool(server);
   registerScoreSetupTool(server);
   registerApplyOrgStandardsTool(server);
+  registerDiscoverAssetsTool(server);
   registerResources(server);
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -66,7 +68,8 @@ describe('MCP Server Integration', () => {
         expect(toolNames).toContain('generate_instructions');
         expect(toolNames).toContain('score_setup');
         expect(toolNames).toContain('apply_org_standards');
-        expect(toolNames.length).toBe(5);
+        expect(toolNames).toContain('discover_assets');
+        expect(toolNames.length).toBe(6);
       } finally {
         await teardownServer();
       }
@@ -171,8 +174,8 @@ describe('MCP Server Integration', () => {
           },
         });
         const text = (result.content as { type: string; text: string }[])[0].text;
-        expect(text).toContain('preview');
-        expect(text).toContain('confirm: true');
+        expect(text).toContain('📋');
+        expect(text).toContain('Target:');
       } finally {
         await teardownServer();
       }
@@ -213,7 +216,7 @@ describe('MCP Server Integration', () => {
           },
         });
         const text = (result.content as { type: string; text: string }[])[0].text;
-        expect(text).toContain('Dry run');
+        expect(text).toContain('🔍');
         expect(fetchMock).not.toHaveBeenCalled();
       } finally {
         await teardownServer();

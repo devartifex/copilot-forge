@@ -8,6 +8,7 @@ import { registerInstallAssetTool } from "./tools/install-asset.js";
 import { registerGenerateInstructionsTool } from "./tools/generate-instructions.js";
 import { registerScoreSetupTool } from "./tools/score-setup.js";
 import { registerApplyOrgStandardsTool } from "./tools/apply-org-standards.js";
+import { registerDiscoverAssetsTool } from "./tools/discover-assets.js";
 import { registerResources } from "./resources.js";
 
 const server = new McpServer({
@@ -20,6 +21,7 @@ registerInstallAssetTool(server);
 registerGenerateInstructionsTool(server);
 registerScoreSetupTool(server);
 registerApplyOrgStandardsTool(server);
+registerDiscoverAssetsTool(server);
 registerResources(server);
 
 const transport= new StdioServerTransport();

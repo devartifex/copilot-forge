@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-MCP (Model Context Protocol) server that provides tools for analyzing codebases, generating Copilot instructions, scoring setups, and safely installing assets. Discovery of skills/prompts/agents is delegated to the LLM via skills and prompts that read catalogs directly.
+MCP (Model Context Protocol) server that provides tools for analyzing codebases, generating Copilot instructions, discovering and installing curated assets, scoring setups, and applying org standards. Discovery uses a built-in curated asset index — no runtime fetching required.
 
 ## Language & Runtime
 
@@ -111,6 +111,8 @@ mcp-server/
   src/
     index.ts              # Server entry point, tool registration
     types.ts              # Shared TypeScript interfaces
+    data/
+      asset-index.ts      # Curated asset catalog with matching logic
     tools/                # One file per MCP tool (registerXxxTool pattern)
     security/             # URL validation, content scanning, path safety, audit
     core/                 # Scoring engine, git operations
